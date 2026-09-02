@@ -112,4 +112,38 @@ export async function raiseDispute(
   return { txHash };
 }
 
+/**
+ * Release an escrowed payment after the dispute window
+ * 
+ * No signer required as a parameter beyond the submitting account — this is a public,
+ * unauthenticated contract call. Still needs a fee-paying source account to submit the transaction.
+ * 
+ * @param config - Trestly contract configuration
+ * @param paymentId - The payment to release
+ * @param submitterAccount - The account that will pay transaction fees (must have funds)
+ * @param signTransaction - Callback to sign the transaction with the submitter's key
+ * @returns Transaction hash
+ */
+export async function release(
+  config: TrestlyConfig,
+  paymentId: number,
+  submitterAccount: string,
+  signTransaction: (xdr: string) => Promise<string>
+): Promise<TransactionResult> {
+  const contractParams = buildReleaseParams(paymentId);
+
+  const { transaction, server } = await buildContractTransaction(
+    config,
+    submitterAccount,
+    "release",
+    contractParams
+  );
+
+  const xdr = await simulateTransaction(server, transaction);
+  const signedXdr = await signTransaction(xdr);
+  const txHash = await submitAndConfirm(server, signedXdr);
+
+  return { txHash };
+}
+
 
