@@ -80,4 +80,36 @@ export async function createPayment(
   return { paymentId, txHash };
 }
 
+/**
+ * Raise a dispute for an escrowed payment
+ * 
+ * Same build → simulate → sign → submit → confirm pattern, invoking raise_dispute.
+ * 
+ * @param config - Trestly contract configuration
+ * @param params - Dispute parameters including payment ID and signer
+ * @returns Transaction hash
+ */
+export async function raiseDispute(
+  config: TrestlyConfig,
+  params: RaiseDisputeParams
+): Promise<TransactionResult> {
+  const contractParams = buildRaiseDisputeParams({
+    paymentId: params.paymentId,
+    payer: params.payer,
+  });
+
+  const { transaction, server } = await buildContractTransaction(
+    config,
+    params.payer,
+    "raise_dispute",
+    contractParams
+  );
+
+  const xdr = await simulateTransaction(server, transaction);
+  const signedXdr = await params.signTransaction(xdr);
+  const txHash = await submitAndConfirm(server, signedXdr);
+
+  return { txHash };
+}
+
 
