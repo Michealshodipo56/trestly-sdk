@@ -1,8 +1,10 @@
 /**
- * Trestly SDK - TypeScript client library for Stellar/Soroban escrow payments
+ * Trestly SDK - TypeScript client library for routing x402 payments through Trestly escrow
  * 
- * A standalone library that routes x402 payments through the Trestly escrow contract.
- * Install with: npm install trestly-sdk
+ * This package provides a drop-in replacement for standard x402 payment calls that routes
+ * payments through the Trestly escrow contract instead of paying the seller directly.
+ * 
+ * @packageDocumentation
  */
 
 // Core client functions
@@ -14,7 +16,7 @@ export {
   getPayment,
 } from "./client.js";
 
-// x402 integration wrapper
+// X402 wrapper (most common integration point)
 export { wrapX402Payment } from "./x402-wrapper.js";
 
 // Types
@@ -29,3 +31,12 @@ export type {
   TransactionResult,
   X402PaymentParams,
 } from "./types.js";
+
+// Contract utilities (for advanced usage)
+export {
+  buildContractTransaction,
+  simulateTransaction,
+  submitAndConfirm,
+  parseEscrowedPayment,
+  parsePaymentId,
+} from "./contract.js";
