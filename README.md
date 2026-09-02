@@ -1,15 +1,10 @@
 # Trestly SDK
 
-TypeScript client library for routing x402 payments through the Trestly escrow contract on Stellar/Soroban.
+A TypeScript client library for routing x402 payments through the Trestly escrow contract on Stellar/Soroban.
 
-## Overview
+## What is Trestly?
 
-Trestly SDK is a standalone library that enables developers to integrate escrowed payments into their applications. Instead of paying a seller directly, payments are routed through the Trestly smart contract, providing:
-
-- **Dispute protection**: Buyers can raise disputes within a configurable time window
-- **Arbiter resolution**: Third-party arbiters can resolve disputes fairly
-- **Automatic release**: Funds automatically release to sellers after the dispute window expires
-- **Type-safe**: Full TypeScript support with comprehensive types
+Trestly provides escrow protection for x402 payments. Instead of paying a seller directly, payments are held in escrow with a dispute window. If there's a problem, the payer can raise a dispute and have an arbiter resolve it. Otherwise, funds automatically release to the seller after the dispute window expires.
 
 ## Installation
 
@@ -17,289 +12,302 @@ Trestly SDK is a standalone library that enables developers to integrate escrowe
 npm install trestly-sdk
 ```
 
-## Requirements
-
-- Node.js >= 18.0.0
-- Works in both Node.js and browser environments
-- Stellar testnet or mainnet account with XLM for transaction fees
-
 ## Quick Start
 
-```typescript
-import { wrapX402Payment, TrestlyConfig } from 'trestly-sdk';
+The simplest way to use Trestly is with the `wrapX402Payment` function - a drop-in replacement for standard x402 payment calls:
 
-// Configure connection to Trestly contract
-const config: TrestlyConfig = {
-  contractId: 'YOUR_CONTRACT_ID',
-  rpcUrl: 'https://soroban-testnet.stellar.org',
-  networkPassphrase: 'Test SDF Network ; September 2015'
+```typescript
+import { wrapX402Payment } from "trestly-sdk";
+import { freighter } from "@stellar/freighter-api";
+
+const config = {
+  contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+  rpcUrl: "https://soroban-testnet.stellar.org",
+  networkPassphrase: "Test SDF Network ; September 2015",
 };
 
-// Route a payment through escrow instead of paying directly
+// Create an escrowed payment
 const result = await wrapX402Payment(config, {
-  payer: buyerAddress,
-  payee: sellerAddress,
-  token: tokenContractAddress,
-  amount: 1000000n, // Amount in token's smallest unit
+  payer: "GAPAYER...",
+  payee: "GASELLER...",
+  token: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC", // USDC
+  amount: 1000000n, // 0.1 USDC (7 decimals)
   disputeWindowSecs: 86400, // 24 hours
-  arbiter: arbiterAddress,
-  signTransaction: async (xdr) => {
-    // Use your preferred signing method (Freighter, Albedo, server keypair, etc.)
-    return await freighter.signTransaction(xdr);
-  }
+  arbiter: "GAARBITER...",
+  signTransaction: async (xdr) => await freighter.signTransaction(xdr),
 });
 
-console.log(`Payment ${result.paymentId} created: ${result.txHash}`);
+console.log(`Payment created with ID: ${result.paymentId}`);
+console.log(`Transaction hash: ${result.txHash}`);
 ```
-
-## Configuration
-
-The `TrestlyConfig` object connects the SDK to your deployed Trestly contract:
-
-```typescript
-interface TrestlyConfig {
-  contractId: string;        // Trestly contract address
-  rpcUrl: string;            // Soroban RPC endpoint
-  networkPassphrase: string; // Network identifier
-}
-```
-
-### Network Examples
-
-**Testnet:**
-```typescript
-{
-  contractId: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM',
-  rpcUrl: 'https://soroban-testnet.stellar.org',
-  networkPassphrase: 'Test SDF Network ; September 2015'
-}
-```
-
-**Mainnet (coming soon):**
-```typescript
-{
-  contractId: 'YOUR_MAINNET_CONTRACT_ID',
-  rpcUrl: 'https://soroban-mainnet.stellar.org',
-  networkPassphrase: 'Public Global Stellar Network ; September 2015'
-}
-```
-
-## API Reference
-
-### Core Functions
-
-#### `wrapX402Payment(config, params)`
-
-The main integration function for routing x402 payments through escrow.
 
 **Important**: This changes the payment recipient from "seller directly" to "the Trestly contract, on the seller's behalf, pending the dispute window."
 
-```typescript
-import { wrapX402Payment } from 'trestly-sdk';
+## Configuration
 
-const result = await wrapX402Payment(config, {
-  payer: string;              // Buyer's Stellar address
-  payee: string;              // Seller's Stellar address
-  token: string;              // Token contract address
-  amount: bigint;             // Amount in smallest unit
-  disputeWindowSecs: number;  // Dispute window in seconds
-  arbiter: string;            // Arbiter's Stellar address
-  signTransaction: (xdr: string) => Promise<string>
+All functions require a `TrestlyConfig` object:
+
+```typescript
+interface TrestlyConfig {
+  contractId: string;           // Trestly contract address
+  rpcUrl: string;              // Soroban RPC endpoint
+  networkPassphrase: string;   // Network identifier
+}
+```
+
+Example configurations:
+
+```typescript
+// Testnet
+const testnetConfig = {
+  contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+  rpcUrl: "https://soroban-testnet.stellar.org",
+  networkPassphrase: "Test SDF Network ; September 2015",
+};
+
+// Mainnet (when deployed)
+const mainnetConfig = {
+  contractId: "YOUR_CONTRACT_ID",
+  rpcUrl: "https://soroban-mainnet.stellar.org",
+  networkPassphrase: "Public Global Stellar Network ; September 2015",
+};
+```
+
+## Core Functions
+
+### createPayment
+
+Create a new escrowed payment:
+
+```typescript
+import { createPayment } from "trestly-sdk";
+
+const result = await createPayment(config, {
+  payer: "GAPAYER...",
+  payee: "GAPAYEE...",
+  token: "GATOKEN...",
+  amount: 1000000n,
+  disputeWindowSecs: 86400, // 24 hours
+  arbiter: "GAARBITER...",
+  signTransaction: async (xdr) => {
+    // Sign with Freighter (browser)
+    return await freighter.signTransaction(xdr);
+  },
 });
-// Returns: { paymentId: number, txHash: string }
+
+console.log(`Payment ID: ${result.paymentId}`);
+console.log(`TX Hash: ${result.txHash}`);
 ```
 
-#### `createPayment(config, params)`
+### getPayment
 
-Lower-level function to create an escrowed payment (called by `wrapX402Payment`).
+Retrieve payment details:
 
 ```typescript
-import { createPayment } from 'trestly-sdk';
+import { getPayment } from "trestly-sdk";
 
-const result = await createPayment(config, params);
+const payment = await getPayment(config, paymentId);
+
+console.log(`Payer: ${payment.payer}`);
+console.log(`Payee: ${payment.payee}`);
+console.log(`Amount: ${payment.amount}`);
+console.log(`Disputed: ${payment.disputed}`);
+console.log(`Resolved: ${payment.resolved}`);
+console.log(`Dispute window ends: ${new Date(Number(payment.disputeWindowEnd) * 1000)}`);
 ```
 
-#### `getPayment(config, paymentId)`
+### raiseDispute
 
-Retrieve payment details (read-only, no signing required).
-
-```typescript
-import { getPayment } from 'trestly-sdk';
-
-const payment = await getPayment(config, 42);
-console.log(payment.amount);        // bigint
-console.log(payment.disputed);      // boolean
-console.log(payment.resolved);      // boolean
-console.log(payment.disputeWindowEnd); // bigint (unix timestamp)
-```
-
-#### `raiseDispute(config, params)`
-
-Raise a dispute on a payment (must be called by payer within dispute window).
+Payer can raise a dispute before the window expires:
 
 ```typescript
-import { raiseDispute } from 'trestly-sdk';
+import { raiseDispute } from "trestly-sdk";
 
 const result = await raiseDispute(config, {
   paymentId: 42,
-  payer: payerAddress,
-  signTransaction: async (xdr) => await signer(xdr)
+  payer: "GAPAYER...",
+  signTransaction: async (xdr) => await freighter.signTransaction(xdr),
 });
+
+console.log(`Dispute raised: ${result.txHash}`);
 ```
 
-#### `resolveDispute(config, params)`
+### resolveDispute
 
-Resolve a disputed payment (must be called by arbiter).
+Arbiter resolves a disputed payment:
 
 ```typescript
-import { resolveDispute } from 'trestly-sdk';
+import { resolveDispute } from "trestly-sdk";
 
 const result = await resolveDispute(config, {
   paymentId: 42,
-  arbiter: arbiterAddress,
-  refundToPayer: true, // true = refund, false = release to payee
-  signTransaction: async (xdr) => await signer(xdr)
+  arbiter: "GAARBITER...",
+  refundToPayer: true, // true = refund payer, false = release to payee
+  signTransaction: async (xdr) => await arbiterSignFn(xdr),
 });
+
+console.log(`Dispute resolved: ${result.txHash}`);
 ```
 
-#### `release(config, paymentId, submitterKeypair)`
+### release
 
-Release payment to payee after dispute window (public function, requires fee-paying keypair).
+Anyone can release funds to the payee after the dispute window (if no dispute):
 
 ```typescript
-import { release, Keypair } from 'trestly-sdk';
+import { release } from "trestly-sdk";
 
-const submitter = Keypair.fromSecret('SXXX...');
-const result = await release(config, 42, submitter);
+const result = await release(
+  config,
+  paymentId,
+  "GASUBMITTER...", // Account paying transaction fees
+  async (xdr) => await signFn(xdr)
+);
+
+console.log(`Payment released: ${result.txHash}`);
 ```
 
-## Wallet Integration
+## Signing Transactions
 
-The SDK is wallet-agnostic and accepts a `signTransaction` callback, making it compatible with any Stellar wallet:
+The SDK is wallet-agnostic. You provide a `signTransaction` callback that returns a signed XDR string.
 
-### Browser: Freighter
+### Browser with Freighter
 
 ```typescript
-import { setAllowed } from '@stellar/freighter-api';
+import { freighter } from "@stellar/freighter-api";
 
 const signTransaction = async (xdr: string) => {
-  await setAllowed();
-  const { signedTxXdr } = await window.freighter.signTransaction(xdr, {
-    networkPassphrase: config.networkPassphrase
-  });
-  return signedTxXdr;
+  return await freighter.signTransaction(xdr);
 };
 ```
 
-### Browser: Albedo
+### Server-side with Keypair
 
 ```typescript
-import albedo from '@albedo-link/intent';
+import { Keypair } from "@stellar/stellar-sdk";
+
+const keypair = Keypair.fromSecret("SXXXXXXX...");
 
 const signTransaction = async (xdr: string) => {
-  const result = await albedo.tx({
-    xdr,
-    network: 'testnet'
-  });
-  return result.signed_envelope_xdr;
+  const transaction = TransactionBuilder.fromXDR(xdr, networkPassphrase);
+  transaction.sign(keypair);
+  return transaction.toXDR();
 };
 ```
 
-### Server: Keypair
+### Other Wallets
+
+Any wallet that can sign Stellar transactions works - just implement the callback:
 
 ```typescript
-import { Keypair, TransactionBuilder } from '@stellar/stellar-sdk';
-
-const keypair = Keypair.fromSecret('SXXX...');
-
-const signTransaction = async (xdr: string) => {
-  const tx = TransactionBuilder.fromXDR(xdr, config.networkPassphrase);
-  tx.sign(keypair);
-  return tx.toXDR();
-};
+type SignTransaction = (xdr: string) => Promise<string>;
 ```
 
-## Complete Example
+## TypeScript Support
+
+The SDK is written in TypeScript with full type definitions:
+
+```typescript
+import type {
+  TrestlyConfig,
+  EscrowedPayment,
+  CreatePaymentParams,
+  CreatePaymentResult,
+  TransactionResult,
+} from "trestly-sdk";
+```
+
+## Error Handling
+
+The SDK throws descriptive errors:
+
+```typescript
+try {
+  const result = await createPayment(config, params);
+} catch (error) {
+  if (error instanceof Error) {
+    console.error(`Payment failed: ${error.message}`);
+    // Examples:
+    // - "Simulation failed: InvalidAmount"
+    // - "Transaction failed: ..."
+    // - "Transaction confirmation timeout"
+  }
+}
+```
+
+## Complete Integration Example
 
 ```typescript
 import {
   wrapX402Payment,
   getPayment,
   raiseDispute,
-  TrestlyConfig
-} from 'trestly-sdk';
+  resolveDispute,
+  release,
+  type TrestlyConfig,
+} from "trestly-sdk";
+import { freighter } from "@stellar/freighter-api";
 
 const config: TrestlyConfig = {
-  contractId: 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM',
-  rpcUrl: 'https://soroban-testnet.stellar.org',
-  networkPassphrase: 'Test SDF Network ; September 2015'
+  contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+  rpcUrl: "https://soroban-testnet.stellar.org",
+  networkPassphrase: "Test SDF Network ; September 2015",
 };
 
-// 1. Create escrowed payment
+// 1. Buyer creates payment through escrow
 const payment = await wrapX402Payment(config, {
-  payer: 'GBUYER...',
-  payee: 'GSELLER...',
-  token: 'CTOKEN...',
-  amount: 1000000n,
-  disputeWindowSecs: 86400, // 24 hours
-  arbiter: 'GARBITER...',
-  signTransaction: async (xdr) => await freighter.signTransaction(xdr)
+  payer: buyerAddress,
+  payee: sellerAddress,
+  token: usdcAddress,
+  amount: 100_0000000n, // 100 USDC
+  disputeWindowSecs: 172800, // 48 hours
+  arbiter: arbiterAddress,
+  signTransaction: async (xdr) => await freighter.signTransaction(xdr),
 });
 
 console.log(`Payment ${payment.paymentId} created`);
 
 // 2. Check payment status
-const details = await getPayment(config, payment.paymentId);
-console.log('Dispute window ends:', new Date(Number(details.disputeWindowEnd) * 1000));
+const status = await getPayment(config, payment.paymentId);
+console.log(`Dispute window ends: ${new Date(Number(status.disputeWindowEnd) * 1000)}`);
 
-// 3. Optionally raise a dispute (within dispute window)
-if (/* buyer has issue */) {
+// 3a. If there's a problem, buyer raises dispute
+if (problemOccurred) {
   await raiseDispute(config, {
     paymentId: payment.paymentId,
-    payer: 'GBUYER...',
-    signTransaction: async (xdr) => await freighter.signTransaction(xdr)
+    payer: buyerAddress,
+    signTransaction: async (xdr) => await freighter.signTransaction(xdr),
+  });
+
+  // 3b. Arbiter resolves the dispute
+  await resolveDispute(config, {
+    paymentId: payment.paymentId,
+    arbiter: arbiterAddress,
+    refundToPayer: shouldRefund,
+    signTransaction: async (xdr) => await arbiterSignFn(xdr),
   });
 }
 
-// 4. After dispute window, payment auto-releases or arbiter resolves
+// 4. Otherwise, anyone can release after dispute window
+else {
+  await release(
+    config,
+    payment.paymentId,
+    releaserAddress,
+    async (xdr) => await signerFn(xdr)
+  );
+}
 ```
 
-## Types
+## Package Exports
+
+The package is dual-module (ESM + CommonJS):
 
 ```typescript
-interface EscrowedPayment {
-  payer: string;
-  payee: string;
-  token: string;
-  amount: bigint;
-  disputeWindowEnd: bigint; // Unix timestamp in seconds
-  arbiter: string;
-  disputed: boolean;
-  resolved: boolean;
-}
+// ESM
+import { wrapX402Payment } from "trestly-sdk";
 
-type SignTransaction = (xdr: string) => Promise<string>;
-```
-
-## Error Handling
-
-The SDK throws descriptive errors for common failure cases:
-
-```typescript
-try {
-  const result = await createPayment(config, params);
-} catch (error) {
-  if (error.message.includes('Simulation failed')) {
-    // Contract rejected the transaction (e.g., invalid parameters)
-    console.error('Contract error:', error.message);
-  } else if (error.message.includes('confirmation timeout')) {
-    // Transaction submitted but not confirmed in time
-    console.error('Network delay:', error.message);
-  } else {
-    // Other errors (network, RPC, etc.)
-    console.error('Unexpected error:', error);
-  }
-}
+// CommonJS
+const { wrapX402Payment } = require("trestly-sdk");
 ```
 
 ## Development
@@ -308,46 +316,38 @@ try {
 # Install dependencies
 npm install
 
-# Build for both ESM and CJS
+# Build (ESM + CJS + types)
 npm run build
 
 # Run tests
 npm test
 
-# Run tests with coverage
-npm test -- --coverage
+# Type check
+npx tsc --noEmit
 ```
 
-## Architecture
+## Environment Requirements
 
-This SDK is designed as infrastructure for other developers to install and import. It:
+- Node.js >= 18.0.0
+- TypeScript >= 5.0.0 (for development)
 
-- Provides a pure client library (no UI, no server)
-- Works in both Node.js and browser environments
-- Exports dual ESM/CJS packages for maximum compatibility
-- Decouples from specific wallets via the `signTransaction` callback pattern
-- Matches the Trestly contract interface exactly
+## Dependencies
 
-## Use Cases
-
-- **Marketplaces**: Protect buyers and sellers in peer-to-peer transactions
-- **Freelance platforms**: Hold payment until work is delivered and approved
-- **Crowdfunding**: Escrow backer funds with refund mechanisms
-- **Rental agreements**: Hold deposits with arbiter-based dispute resolution
-- **Any x402 payment**: Drop-in replacement for direct transfers
+- `@stellar/stellar-sdk` - Soroban RPC and transaction building
+- `@stellar/freighter-api` - Wallet signing (browser only, optional)
 
 ## License
 
 MIT
 
-## Links
-
-- [Trestly Contract](https://github.com/yourusername/trestly-contract)
-- [Stellar Documentation](https://developers.stellar.org/)
-- [Soroban Documentation](https://soroban.stellar.org/)
-
 ## Support
 
 For issues and questions:
-- GitHub Issues: [https://github.com/yourusername/trestly-sdk/issues](https://github.com/yourusername/trestly-sdk/issues)
-- Stellar Discord: [https://discord.gg/stellar](https://discord.gg/stellar)
+- GitHub Issues: [trestly-sdk/issues](https://github.com/Michealshodipo56/trestly-sdk/issues)
+- Documentation: This README
+- Contract Spec: See `trestly-contract` repository
+
+## Related Projects
+
+- `trestly-contract` - The Soroban smart contract (separate repo)
+- `trestly-app` - Reference implementation demo app (separate repo)
