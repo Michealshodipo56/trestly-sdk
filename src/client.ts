@@ -146,4 +146,78 @@ export async function release(
   return { txHash };
 }
 
+/**
+ * Resolve a disputed payment (arbiter only)
+ * 
+ * Invokes resolve_dispute. The arbiter decides whether to refund to payer or release to payee.
+ * 
+ * @param config - Trestly contract configuration
+ * @param params - Resolution parameters including arbiter and decision
+ * @returns Transaction hash
+ */
+export async function resolveDispute(
+  config: TrestlyConfig,
+  params: ResolveDisputeParams
+): Promise<TransactionResult> {
+  const contractParams = buildResolveDisputeParams({
+    paymentId: params.paymentId,
+    arbiter: params.arbiter,
+    refundToPayer: params.refundToPayer,
+  });
+
+  const { transaction, server } = await buildContractTransaction(
+    config,
+    params.arbiter,
+    "resolve_dispute",
+    contractParams
+  );
+
+  const xdr = await simulateTransaction(server, transaction);
+  const signedXdr = await params.signTransaction(xdr);
+  const txHash = await submitAndConfirm(server, signedXdr);
+
+  return { txHash };
+}
+
+/**
+ * Get an escrowed payment by ID
+ * 
+ * Read-only — simulate a transaction calling get_payment, parse and return the result.
+ * No signing needed.
+ * 
+ * @param config - Trestly contract configuration
+ * @param paymentId - The payment ID to retrieve
+ * @returns The escrowed payment data
+ */
+export async function getPayment(
+  config: TrestlyConfig,
+  paymentId: number
+): Promise<EscrowedPayment> {
+  const server = new SorobanRpc.Server(config.rpcUrl);
+  const contractParams = buildGetPaymentParams(paymentId);
+
+  // Use a dummy account for simulation (read-only call)
+  const dummyAccount = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+  const { transaction } = await buildContractTransaction(
+    config,
+    dummyAccount,
+    "get_payment",
+    contractParams
+  );
+
+  const built = transaction.build();
+  const simulated = await server.simulateTransaction(built);
+
+  if (SorobanRpc.Api.isSimulationError(simulated)) {
+    throw new Error(`Simulation failed: ${simulated.error}`);
+  }
+
+  if (!simulated.result || !simulated.result.retval) {
+    throw new Error("No return value from get_payment");
+  }
+
+  return parseEscrowedPayment(simulated.result.retval);
+}
+
 
