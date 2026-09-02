@@ -1,365 +1,351 @@
 /**
- * Test suite for Trestly SDK client functions
+ * Tests for Trestly SDK client functions
  */
 
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
-import { Keypair, SorobanRpc, xdr, nativeToScVal, Address } from "@stellar/stellar-sdk";
+import { SorobanRpc, xdr, nativeToScVal } from "@stellar/stellar-sdk";
 import {
   createPayment,
-  getPayment,
   raiseDispute,
   release,
   resolveDispute,
+  getPayment,
 } from "../src/client.js";
 import { wrapX402Payment } from "../src/x402-wrapper.js";
-import { TrestlyConfig, CreatePaymentParams, EscrowedPayment } from "../src/types.js";
+import { TrestlyConfig } from "../src/types.js";
 import * as contract from "../src/contract.js";
 
-// Mock configuration
+// Mock the contract module
+jest.mock("../src/contract.js");
+
 const mockConfig: TrestlyConfig = {
   contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
   rpcUrl: "https://soroban-testnet.stellar.org",
   networkPassphrase: "Test SDF Network ; September 2015",
 };
 
-const mockPayer = Keypair.random();
-const mockPayee = Keypair.random();
-const mockArbiter = Keypair.random();
-const mockToken = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
+const mockSignTransaction = jest.fn<(xdr: string) => Promise<string>>();
 
-describe("Trestly SDK", () => {
-  let mockSignTransaction: jest.Mock<(xdr: string) => Promise<string>>;
-
+describe("createPayment", () => {
   beforeEach(() => {
-    mockSignTransaction = jest.fn(async (xdr: string) => xdr);
+    jest.clearAllMocks();
   });
 
-  describe("createPayment", () => {
-    it("should build and submit a create_payment transaction", async () => {
-      const mockPaymentId = 42;
-      const mockTxHash = "mock_transaction_hash_12345";
+  it("should build and submit a transaction, returning paymentId and txHash", async () => {
+    const mockServer = {
+      getTransaction: jest.fn().mockResolvedValue({
+        status: "SUCCESS",
+        returnValue: nativeToScVal(42, { type: "u64" }),
+      }),
+    } as unknown as SorobanRpc.Server;
 
-      // Mock the contract functions
-      const mockServer = {
-        getAccount: jest.fn().mockResolvedValue({
-          accountId: () => mockPayer.publicKey(),
-          sequenceNumber: () => "1",
-          incrementSequenceNumber: jest.fn(),
-        }),
-        simulateTransaction: jest.fn().mockResolvedValue({
-          result: {
-            retval: nativeToScVal(mockPaymentId, { type: "u64" }),
-          },
-          transactionData: new xdr.SorobanTransactionData({
-            resources: new xdr.SorobanResources({
-              footprint: new xdr.LedgerFootprint({
-                readOnly: [],
-                readWrite: [],
-              }),
-              instructions: 0,
-              readBytes: 0,
-              writeBytes: 0,
-            }),
-            resourceFee: xdr.Int64.fromString("0"),
-            ext: new xdr.SorobanTransactionDataExt(0),
-          }),
-        }),
-        sendTransaction: jest.fn().mockResolvedValue({
-          status: "PENDING",
-          hash: mockTxHash,
-        }),
-        getTransaction: jest.fn().mockResolvedValue({
-          status: "SUCCESS",
-          returnValue: nativeToScVal(mockPaymentId, { type: "u64" }),
-        }),
-        prepareTransaction: jest.fn((tx) => tx),
-      } as unknown as SorobanRpc.Server;
+    const mockTransaction = {} as any;
 
-      jest.spyOn(SorobanRpc, "Server").mockImplementation(() => mockServer);
-      jest.spyOn(SorobanRpc.Api, "isSimulationError").mockReturnValue(false);
+    (contract.buildCreatePaymentParams as jest.Mock).mockReturnValue([]);
+    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+      transaction: mockTransaction,
+      server: mockServer,
+    });
+    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    mockSignTransaction.mockResolvedValue("signed_xdr");
+    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("mock_tx_hash");
+    (contract.parsePaymentId as jest.Mock).mockReturnValue(42);
 
-      const params: CreatePaymentParams = {
-        payer: mockPayer.publicKey(),
-        payee: mockPayee.publicKey(),
-        token: mockToken,
+    const result = await createPayment(mockConfig, {
+      payer: "GAPAYER...",
+      payee: "GAPAYEE...",
+      token: "GATOKEN...",
+      amount: 1000000n,
+      disputeWindowSecs: 86400,
+      arbiter: "GAARBITER...",
+      signTransaction: mockSignTransaction,
+    });
+
+    expect(result).toEqual({
+      paymentId: 42,
+      txHash: "mock_tx_hash",
+    });
+
+    expect(contract.buildCreatePaymentParams).toHaveBeenCalledWith({
+      payer: "GAPAYER...",
+      payee: "GAPAYEE...",
+      token: "GATOKEN...",
+      amount: 1000000n,
+      disputeWindowSecs: 86400,
+      arbiter: "GAARBITER...",
+    });
+
+    expect(contract.buildContractTransaction).toHaveBeenCalledWith(
+      mockConfig,
+      "GAPAYER...",
+      "create_payment",
+      []
+    );
+
+    expect(mockSignTransaction).toHaveBeenCalledWith("mock_xdr");
+    expect(contract.submitAndConfirm).toHaveBeenCalledWith(mockServer, "signed_xdr");
+  });
+
+  it("should throw if transaction result has no returnValue", async () => {
+    const mockServer = {
+      getTransaction: jest.fn().mockResolvedValue({
+        status: "SUCCESS",
+        returnValue: undefined,
+      }),
+    } as unknown as SorobanRpc.Server;
+
+    (contract.buildCreatePaymentParams as jest.Mock).mockReturnValue([]);
+    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+      transaction: {},
+      server: mockServer,
+    });
+    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    mockSignTransaction.mockResolvedValue("signed_xdr");
+    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("mock_tx_hash");
+
+    await expect(
+      createPayment(mockConfig, {
+        payer: "GAPAYER...",
+        payee: "GAPAYEE...",
+        token: "GATOKEN...",
         amount: 1000000n,
         disputeWindowSecs: 86400,
-        arbiter: mockArbiter.publicKey(),
+        arbiter: "GAARBITER...",
         signTransaction: mockSignTransaction,
-      };
+      })
+    ).rejects.toThrow("Failed to get payment ID from transaction result");
+  });
+});
 
-      const result = await createPayment(mockConfig, params);
+describe("raiseDispute", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
-      expect(result.paymentId).toBe(mockPaymentId);
-      expect(result.txHash).toBe(mockTxHash);
-      expect(mockSignTransaction).toHaveBeenCalled();
+  it("should build and submit a raise_dispute transaction", async () => {
+    const mockServer = {} as SorobanRpc.Server;
+    const mockTransaction = {} as any;
+
+    (contract.buildRaiseDisputeParams as jest.Mock).mockReturnValue([]);
+    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+      transaction: mockTransaction,
+      server: mockServer,
+    });
+    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    mockSignTransaction.mockResolvedValue("signed_xdr");
+    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("dispute_tx_hash");
+
+    const result = await raiseDispute(mockConfig, {
+      paymentId: 42,
+      payer: "GAPAYER...",
+      signTransaction: mockSignTransaction,
     });
 
-    it("should handle simulation errors", async () => {
-      const mockServer = {
-        getAccount: jest.fn().mockResolvedValue({
-          accountId: () => mockPayer.publicKey(),
-          sequenceNumber: () => "1",
-          incrementSequenceNumber: jest.fn(),
-        }),
-        simulateTransaction: jest.fn().mockResolvedValue({
-          error: "InvalidAmount",
-        }),
-      } as unknown as SorobanRpc.Server;
+    expect(result).toEqual({ txHash: "dispute_tx_hash" });
+    expect(contract.buildRaiseDisputeParams).toHaveBeenCalledWith({
+      paymentId: 42,
+      payer: "GAPAYER...",
+    });
+    expect(contract.buildContractTransaction).toHaveBeenCalledWith(
+      mockConfig,
+      "GAPAYER...",
+      "raise_dispute",
+      []
+    );
+  });
+});
 
-      jest.spyOn(SorobanRpc, "Server").mockImplementation(() => mockServer);
-      jest.spyOn(SorobanRpc.Api, "isSimulationError").mockReturnValue(true);
+describe("release", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
-      const params: CreatePaymentParams = {
-        payer: mockPayer.publicKey(),
-        payee: mockPayee.publicKey(),
-        token: mockToken,
-        amount: 1000000n,
+  it("should build and submit a release transaction", async () => {
+    const mockServer = {} as SorobanRpc.Server;
+    const mockTransaction = {} as any;
+
+    (contract.buildReleaseParams as jest.Mock).mockReturnValue([]);
+    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+      transaction: mockTransaction,
+      server: mockServer,
+    });
+    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    mockSignTransaction.mockResolvedValue("signed_xdr");
+    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("release_tx_hash");
+
+    const result = await release(
+      mockConfig,
+      42,
+      "GASUBMITTER...",
+      mockSignTransaction
+    );
+
+    expect(result).toEqual({ txHash: "release_tx_hash" });
+    expect(contract.buildReleaseParams).toHaveBeenCalledWith(42);
+    expect(contract.buildContractTransaction).toHaveBeenCalledWith(
+      mockConfig,
+      "GASUBMITTER...",
+      "release",
+      []
+    );
+  });
+});
+
+describe("resolveDispute", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("should build and submit a resolve_dispute transaction", async () => {
+    const mockServer = {} as SorobanRpc.Server;
+    const mockTransaction = {} as any;
+
+    (contract.buildResolveDisputeParams as jest.Mock).mockReturnValue([]);
+    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+      transaction: mockTransaction,
+      server: mockServer,
+    });
+    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    mockSignTransaction.mockResolvedValue("signed_xdr");
+    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("resolve_tx_hash");
+
+    const result = await resolveDispute(mockConfig, {
+      paymentId: 42,
+      arbiter: "GAARBITER...",
+      refundToPayer: true,
+      signTransaction: mockSignTransaction,
+    });
+
+    expect(result).toEqual({ txHash: "resolve_tx_hash" });
+    expect(contract.buildResolveDisputeParams).toHaveBeenCalledWith({
+      paymentId: 42,
+      arbiter: "GAARBITER...",
+      refundToPayer: true,
+    });
+    expect(contract.buildContractTransaction).toHaveBeenCalledWith(
+      mockConfig,
+      "GAARBITER...",
+      "resolve_dispute",
+      []
+    );
+  });
+});
+
+describe("getPayment", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("should correctly parse and return EscrowedPayment", async () => {
+    const mockPayment = {
+      payer: "GAPAYER...",
+      payee: "GAPAYEE...",
+      token: "GATOKEN...",
+      amount: 1000000n,
+      disputeWindowEnd: 1234567890n,
+      arbiter: "GAARBITER...",
+      disputed: false,
+      resolved: false,
+    };
+
+    const mockRetval = nativeToScVal(mockPayment, { type: "map" });
+    const mockSimulation = {
+      result: { retval: mockRetval },
+    };
+
+    const mockServer = {
+      simulateTransaction: jest.fn().mockResolvedValue(mockSimulation),
+    } as unknown as SorobanRpc.Server;
+
+    (contract.buildGetPaymentParams as jest.Mock).mockReturnValue([]);
+    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+      transaction: { build: jest.fn().mockReturnValue({}) },
+      server: mockServer,
+    });
+    (contract.parseEscrowedPayment as jest.Mock).mockReturnValue(mockPayment);
+
+    const result = await getPayment(mockConfig, 42);
+
+    expect(result).toEqual(mockPayment);
+    expect(contract.buildGetPaymentParams).toHaveBeenCalledWith(42);
+    expect(contract.parseEscrowedPayment).toHaveBeenCalledWith(mockRetval);
+  });
+});
+
+describe("wrapX402Payment", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("should correctly delegate to createPayment with mapped parameters", async () => {
+    const mockServer = {
+      getTransaction: jest.fn().mockResolvedValue({
+        status: "SUCCESS",
+        returnValue: nativeToScVal(99, { type: "u64" }),
+      }),
+    } as unknown as SorobanRpc.Server;
+
+    (contract.buildCreatePaymentParams as jest.Mock).mockReturnValue([]);
+    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+      transaction: {},
+      server: mockServer,
+    });
+    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    mockSignTransaction.mockResolvedValue("signed_xdr");
+    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("wrapped_tx_hash");
+    (contract.parsePaymentId as jest.Mock).mockReturnValue(99);
+
+    const result = await wrapX402Payment(mockConfig, {
+      payer: "GAPAYER...",
+      payee: "GASELLER...",
+      token: "GATOKEN...",
+      amount: 5000000n,
+      disputeWindowSecs: 172800,
+      arbiter: "GAARBITER...",
+      signTransaction: mockSignTransaction,
+    });
+
+    expect(result).toEqual({
+      paymentId: 99,
+      txHash: "wrapped_tx_hash",
+    });
+
+    expect(contract.buildCreatePaymentParams).toHaveBeenCalledWith({
+      payer: "GAPAYER...",
+      payee: "GASELLER...",
+      token: "GATOKEN...",
+      amount: 5000000n,
+      disputeWindowSecs: 172800,
+      arbiter: "GAARBITER...",
+    });
+  });
+});
+
+describe("Error propagation", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("should propagate contract errors when simulation fails", async () => {
+    (contract.buildCreatePaymentParams as jest.Mock).mockReturnValue([]);
+    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+      transaction: {},
+      server: {},
+    });
+    (contract.simulateTransaction as jest.Mock).mockRejectedValue(
+      new Error("Simulation failed: InvalidAmount")
+    );
+
+    await expect(
+      createPayment(mockConfig, {
+        payer: "GAPAYER...",
+        payee: "GAPAYEE...",
+        token: "GATOKEN...",
+        amount: -1n,
         disputeWindowSecs: 86400,
-        arbiter: mockArbiter.publicKey(),
+        arbiter: "GAARBITER...",
         signTransaction: mockSignTransaction,
-      };
-
-      await expect(createPayment(mockConfig, params)).rejects.toThrow(
-        "Simulation failed"
-      );
-    });
-  });
-
-  describe("getPayment", () => {
-    it("should retrieve and parse payment details", async () => {
-      const mockPaymentData = {
-        payer: mockPayer.publicKey(),
-        payee: mockPayee.publicKey(),
-        token: mockToken,
-        amount: 1000000,
-        dispute_window_end: 1234567890,
-        arbiter: mockArbiter.publicKey(),
-        disputed: false,
-        resolved: false,
-      };
-
-      const mockServer = {
-        getAccount: jest.fn().mockResolvedValue({
-          accountId: () => Keypair.random().publicKey(),
-          sequenceNumber: () => "1",
-          incrementSequenceNumber: jest.fn(),
-        }),
-        simulateTransaction: jest.fn().mockResolvedValue({
-          result: {
-            retval: nativeToScVal(mockPaymentData, { type: "map" }),
-          },
-        }),
-      } as unknown as SorobanRpc.Server;
-
-      jest.spyOn(SorobanRpc, "Server").mockImplementation(() => mockServer);
-      jest.spyOn(SorobanRpc.Api, "isSimulationError").mockReturnValue(false);
-
-      const result = await getPayment(mockConfig, 1);
-
-      expect(result.payer).toBe(mockPaymentData.payer);
-      expect(result.payee).toBe(mockPaymentData.payee);
-      expect(result.amount).toBe(BigInt(mockPaymentData.amount));
-    });
-  });
-
-  describe("wrapX402Payment", () => {
-    it("should delegate to createPayment with mapped parameters", async () => {
-      const mockPaymentId = 99;
-      const mockTxHash = "wrapped_tx_hash";
-
-      // Mock createPayment
-      jest.spyOn(contract, "buildContractTransaction").mockResolvedValue({
-        transaction: {} as any,
-        server: {
-          simulateTransaction: jest.fn().mockResolvedValue({
-            result: { retval: nativeToScVal(mockPaymentId, { type: "u64" }) },
-            transactionData: new xdr.SorobanTransactionData({
-              resources: new xdr.SorobanResources({
-                footprint: new xdr.LedgerFootprint({
-                  readOnly: [],
-                  readWrite: [],
-                }),
-                instructions: 0,
-                readBytes: 0,
-                writeBytes: 0,
-              }),
-              resourceFee: xdr.Int64.fromString("0"),
-              ext: new xdr.SorobanTransactionDataExt(0),
-            }),
-          }),
-          sendTransaction: jest.fn().mockResolvedValue({
-            status: "PENDING",
-            hash: mockTxHash,
-          }),
-          getTransaction: jest.fn().mockResolvedValue({
-            status: "SUCCESS",
-            returnValue: nativeToScVal(mockPaymentId, { type: "u64" }),
-          }),
-        } as any,
-      });
-
-      const result = await wrapX402Payment(mockConfig, {
-        payer: mockPayer.publicKey(),
-        payee: mockPayee.publicKey(),
-        token: mockToken,
-        amount: 5000000n,
-        disputeWindowSecs: 172800,
-        arbiter: mockArbiter.publicKey(),
-        signTransaction: mockSignTransaction,
-      });
-
-      expect(result.paymentId).toBe(mockPaymentId);
-      expect(result.txHash).toBe(mockTxHash);
-    });
-  });
-
-  describe("raiseDispute", () => {
-    it("should build and submit a raise_dispute transaction", async () => {
-      const mockTxHash = "dispute_tx_hash";
-
-      const mockServer = {
-        getAccount: jest.fn().mockResolvedValue({
-          accountId: () => mockPayer.publicKey(),
-          sequenceNumber: () => "1",
-          incrementSequenceNumber: jest.fn(),
-        }),
-        simulateTransaction: jest.fn().mockResolvedValue({
-          result: { retval: nativeToScVal(true, { type: "bool" }) },
-          transactionData: new xdr.SorobanTransactionData({
-            resources: new xdr.SorobanResources({
-              footprint: new xdr.LedgerFootprint({
-                readOnly: [],
-                readWrite: [],
-              }),
-              instructions: 0,
-              readBytes: 0,
-              writeBytes: 0,
-            }),
-            resourceFee: xdr.Int64.fromString("0"),
-            ext: new xdr.SorobanTransactionDataExt(0),
-          }),
-        }),
-        sendTransaction: jest.fn().mockResolvedValue({
-          status: "PENDING",
-          hash: mockTxHash,
-        }),
-        getTransaction: jest.fn().mockResolvedValue({
-          status: "SUCCESS",
-        }),
-      } as unknown as SorobanRpc.Server;
-
-      jest.spyOn(SorobanRpc, "Server").mockImplementation(() => mockServer);
-      jest.spyOn(SorobanRpc.Api, "isSimulationError").mockReturnValue(false);
-
-      const result = await raiseDispute(mockConfig, {
-        paymentId: 1,
-        payer: mockPayer.publicKey(),
-        signTransaction: mockSignTransaction,
-      });
-
-      expect(result.txHash).toBe(mockTxHash);
-    });
-  });
-
-  describe("resolveDispute", () => {
-    it("should build and submit a resolve_dispute transaction", async () => {
-      const mockTxHash = "resolve_tx_hash";
-
-      const mockServer = {
-        getAccount: jest.fn().mockResolvedValue({
-          accountId: () => mockArbiter.publicKey(),
-          sequenceNumber: () => "1",
-          incrementSequenceNumber: jest.fn(),
-        }),
-        simulateTransaction: jest.fn().mockResolvedValue({
-          result: { retval: nativeToScVal(true, { type: "bool" }) },
-          transactionData: new xdr.SorobanTransactionData({
-            resources: new xdr.SorobanResources({
-              footprint: new xdr.LedgerFootprint({
-                readOnly: [],
-                readWrite: [],
-              }),
-              instructions: 0,
-              readBytes: 0,
-              writeBytes: 0,
-            }),
-            resourceFee: xdr.Int64.fromString("0"),
-            ext: new xdr.SorobanTransactionDataExt(0),
-          }),
-        }),
-        sendTransaction: jest.fn().mockResolvedValue({
-          status: "PENDING",
-          hash: mockTxHash,
-        }),
-        getTransaction: jest.fn().mockResolvedValue({
-          status: "SUCCESS",
-        }),
-      } as unknown as SorobanRpc.Server;
-
-      jest.spyOn(SorobanRpc, "Server").mockImplementation(() => mockServer);
-      jest.spyOn(SorobanRpc.Api, "isSimulationError").mockReturnValue(false);
-
-      const result = await resolveDispute(mockConfig, {
-        paymentId: 1,
-        arbiter: mockArbiter.publicKey(),
-        refundToPayer: false,
-        signTransaction: mockSignTransaction,
-      });
-
-      expect(result.txHash).toBe(mockTxHash);
-    });
-  });
-
-  describe("release", () => {
-    it("should require a submitterKeypair", async () => {
-      await expect(release(mockConfig, 1)).rejects.toThrow(
-        "release() requires a submitterKeypair"
-      );
-    });
-
-    it("should build and submit a release transaction with provided keypair", async () => {
-      const mockTxHash = "release_tx_hash";
-      const submitterKeypair = Keypair.random();
-
-      const mockServer = {
-        getAccount: jest.fn().mockResolvedValue({
-          accountId: () => submitterKeypair.publicKey(),
-          sequenceNumber: () => "1",
-          incrementSequenceNumber: jest.fn(),
-        }),
-        simulateTransaction: jest.fn().mockResolvedValue({
-          result: { retval: nativeToScVal(true, { type: "bool" }) },
-          transactionData: new xdr.SorobanTransactionData({
-            resources: new xdr.SorobanResources({
-              footprint: new xdr.LedgerFootprint({
-                readOnly: [],
-                readWrite: [],
-              }),
-              instructions: 0,
-              readBytes: 0,
-              writeBytes: 0,
-            }),
-            resourceFee: xdr.Int64.fromString("0"),
-            ext: new xdr.SorobanTransactionDataExt(0),
-          }),
-        }),
-        sendTransaction: jest.fn().mockResolvedValue({
-          status: "PENDING",
-          hash: mockTxHash,
-        }),
-        getTransaction: jest.fn().mockResolvedValue({
-          status: "SUCCESS",
-        }),
-        prepareTransaction: jest.fn((tx) => tx),
-      } as unknown as SorobanRpc.Server;
-
-      jest.spyOn(SorobanRpc, "Server").mockImplementation(() => mockServer);
-      jest.spyOn(SorobanRpc.Api, "isSimulationError").mockReturnValue(false);
-
-      const result = await release(mockConfig, 1, submitterKeypair);
-
-      expect(result.txHash).toBe(mockTxHash);
-    });
+      })
+    ).rejects.toThrow("Simulation failed: InvalidAmount");
   });
 });
