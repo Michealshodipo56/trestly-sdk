@@ -16,7 +16,18 @@ import { TrestlyConfig } from "../src/types.js";
 import * as contract from "../src/contract.js";
 
 // Mock the contract module
-jest.mock("../src/contract.js");
+jest.mock("../src/contract.js", () => ({
+  buildCreatePaymentParams: jest.fn(),
+  buildRaiseDisputeParams: jest.fn(),
+  buildReleaseParams: jest.fn(),
+  buildResolveDisputeParams: jest.fn(),
+  buildGetPaymentParams: jest.fn(),
+  buildContractTransaction: jest.fn(),
+  simulateTransaction: jest.fn(),
+  submitAndConfirm: jest.fn(),
+  parsePaymentId: jest.fn(),
+  parseEscrowedPayment: jest.fn(),
+}));
 
 const mockConfig: TrestlyConfig = {
   contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
@@ -26,6 +37,18 @@ const mockConfig: TrestlyConfig = {
 
 const mockSignTransaction = jest.fn<(xdr: string) => Promise<string>>();
 
+// Get mocked functions
+const buildCreatePaymentParams = contract.buildCreatePaymentParams as jest.MockedFunction<typeof contract.buildCreatePaymentParams>;
+const buildRaiseDisputeParams = contract.buildRaiseDisputeParams as jest.MockedFunction<typeof contract.buildRaiseDisputeParams>;
+const buildReleaseParams = contract.buildReleaseParams as jest.MockedFunction<typeof contract.buildReleaseParams>;
+const buildResolveDisputeParams = contract.buildResolveDisputeParams as jest.MockedFunction<typeof contract.buildResolveDisputeParams>;
+const buildGetPaymentParams = contract.buildGetPaymentParams as jest.MockedFunction<typeof contract.buildGetPaymentParams>;
+const buildContractTransaction = contract.buildContractTransaction as jest.MockedFunction<typeof contract.buildContractTransaction>;
+const simulateTransaction = contract.simulateTransaction as jest.MockedFunction<typeof contract.simulateTransaction>;
+const submitAndConfirm = contract.submitAndConfirm as jest.MockedFunction<typeof contract.submitAndConfirm>;
+const parsePaymentId = contract.parsePaymentId as jest.MockedFunction<typeof contract.parsePaymentId>;
+const parseEscrowedPayment = contract.parseEscrowedPayment as jest.MockedFunction<typeof contract.parseEscrowedPayment>;
+
 describe("createPayment", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -33,23 +56,23 @@ describe("createPayment", () => {
 
   it("should build and submit a transaction, returning paymentId and txHash", async () => {
     const mockServer = {
-      getTransaction: jest.fn().mockResolvedValue({
+      getTransaction: jest.fn<any>().mockResolvedValue({
         status: "SUCCESS",
         returnValue: nativeToScVal(42, { type: "u64" }),
       }),
-    } as unknown as SorobanRpc.Server;
+    } as any;
 
     const mockTransaction = {} as any;
 
-    (contract.buildCreatePaymentParams as jest.Mock).mockReturnValue([]);
-    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+    buildCreatePaymentParams.mockReturnValue([]);
+    buildContractTransaction.mockResolvedValue({
       transaction: mockTransaction,
       server: mockServer,
     });
-    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    simulateTransaction.mockResolvedValue("mock_xdr");
     mockSignTransaction.mockResolvedValue("signed_xdr");
-    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("mock_tx_hash");
-    (contract.parsePaymentId as jest.Mock).mockReturnValue(42);
+    submitAndConfirm.mockResolvedValue("mock_tx_hash");
+    parsePaymentId.mockReturnValue(42);
 
     const result = await createPayment(mockConfig, {
       payer: "GAPAYER...",
@@ -66,7 +89,7 @@ describe("createPayment", () => {
       txHash: "mock_tx_hash",
     });
 
-    expect(contract.buildCreatePaymentParams).toHaveBeenCalledWith({
+    expect(buildCreatePaymentParams).toHaveBeenCalledWith({
       payer: "GAPAYER...",
       payee: "GAPAYEE...",
       token: "GATOKEN...",
@@ -75,7 +98,7 @@ describe("createPayment", () => {
       arbiter: "GAARBITER...",
     });
 
-    expect(contract.buildContractTransaction).toHaveBeenCalledWith(
+    expect(buildContractTransaction).toHaveBeenCalledWith(
       mockConfig,
       "GAPAYER...",
       "create_payment",
@@ -83,25 +106,25 @@ describe("createPayment", () => {
     );
 
     expect(mockSignTransaction).toHaveBeenCalledWith("mock_xdr");
-    expect(contract.submitAndConfirm).toHaveBeenCalledWith(mockServer, "signed_xdr");
+    expect(submitAndConfirm).toHaveBeenCalledWith(mockServer, "signed_xdr");
   });
 
   it("should throw if transaction result has no returnValue", async () => {
     const mockServer = {
-      getTransaction: jest.fn().mockResolvedValue({
+      getTransaction: jest.fn<any>().mockResolvedValue({
         status: "SUCCESS",
         returnValue: undefined,
       }),
-    } as unknown as SorobanRpc.Server;
+    } as any;
 
-    (contract.buildCreatePaymentParams as jest.Mock).mockReturnValue([]);
-    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
-      transaction: {},
+    buildCreatePaymentParams.mockReturnValue([]);
+    buildContractTransaction.mockResolvedValue({
+      transaction: {} as any,
       server: mockServer,
     });
-    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    simulateTransaction.mockResolvedValue("mock_xdr");
     mockSignTransaction.mockResolvedValue("signed_xdr");
-    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("mock_tx_hash");
+    submitAndConfirm.mockResolvedValue("mock_tx_hash");
 
     await expect(
       createPayment(mockConfig, {
@@ -126,14 +149,14 @@ describe("raiseDispute", () => {
     const mockServer = {} as SorobanRpc.Server;
     const mockTransaction = {} as any;
 
-    (contract.buildRaiseDisputeParams as jest.Mock).mockReturnValue([]);
-    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+    buildRaiseDisputeParams.mockReturnValue([]);
+    buildContractTransaction.mockResolvedValue({
       transaction: mockTransaction,
       server: mockServer,
     });
-    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    simulateTransaction.mockResolvedValue("mock_xdr");
     mockSignTransaction.mockResolvedValue("signed_xdr");
-    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("dispute_tx_hash");
+    submitAndConfirm.mockResolvedValue("dispute_tx_hash");
 
     const result = await raiseDispute(mockConfig, {
       paymentId: 42,
@@ -142,11 +165,11 @@ describe("raiseDispute", () => {
     });
 
     expect(result).toEqual({ txHash: "dispute_tx_hash" });
-    expect(contract.buildRaiseDisputeParams).toHaveBeenCalledWith({
+    expect(buildRaiseDisputeParams).toHaveBeenCalledWith({
       paymentId: 42,
       payer: "GAPAYER...",
     });
-    expect(contract.buildContractTransaction).toHaveBeenCalledWith(
+    expect(buildContractTransaction).toHaveBeenCalledWith(
       mockConfig,
       "GAPAYER...",
       "raise_dispute",
@@ -164,14 +187,14 @@ describe("release", () => {
     const mockServer = {} as SorobanRpc.Server;
     const mockTransaction = {} as any;
 
-    (contract.buildReleaseParams as jest.Mock).mockReturnValue([]);
-    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+    buildReleaseParams.mockReturnValue([]);
+    buildContractTransaction.mockResolvedValue({
       transaction: mockTransaction,
       server: mockServer,
     });
-    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    simulateTransaction.mockResolvedValue("mock_xdr");
     mockSignTransaction.mockResolvedValue("signed_xdr");
-    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("release_tx_hash");
+    submitAndConfirm.mockResolvedValue("release_tx_hash");
 
     const result = await release(
       mockConfig,
@@ -181,8 +204,8 @@ describe("release", () => {
     );
 
     expect(result).toEqual({ txHash: "release_tx_hash" });
-    expect(contract.buildReleaseParams).toHaveBeenCalledWith(42);
-    expect(contract.buildContractTransaction).toHaveBeenCalledWith(
+    expect(buildReleaseParams).toHaveBeenCalledWith(42);
+    expect(buildContractTransaction).toHaveBeenCalledWith(
       mockConfig,
       "GASUBMITTER...",
       "release",
@@ -200,14 +223,14 @@ describe("resolveDispute", () => {
     const mockServer = {} as SorobanRpc.Server;
     const mockTransaction = {} as any;
 
-    (contract.buildResolveDisputeParams as jest.Mock).mockReturnValue([]);
-    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
+    buildResolveDisputeParams.mockReturnValue([]);
+    buildContractTransaction.mockResolvedValue({
       transaction: mockTransaction,
       server: mockServer,
     });
-    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    simulateTransaction.mockResolvedValue("mock_xdr");
     mockSignTransaction.mockResolvedValue("signed_xdr");
-    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("resolve_tx_hash");
+    submitAndConfirm.mockResolvedValue("resolve_tx_hash");
 
     const result = await resolveDispute(mockConfig, {
       paymentId: 42,
@@ -217,12 +240,12 @@ describe("resolveDispute", () => {
     });
 
     expect(result).toEqual({ txHash: "resolve_tx_hash" });
-    expect(contract.buildResolveDisputeParams).toHaveBeenCalledWith({
+    expect(buildResolveDisputeParams).toHaveBeenCalledWith({
       paymentId: 42,
       arbiter: "GAARBITER...",
       refundToPayer: true,
     });
-    expect(contract.buildContractTransaction).toHaveBeenCalledWith(
+    expect(buildContractTransaction).toHaveBeenCalledWith(
       mockConfig,
       "GAARBITER...",
       "resolve_dispute",
@@ -254,21 +277,21 @@ describe("getPayment", () => {
     };
 
     const mockServer = {
-      simulateTransaction: jest.fn().mockResolvedValue(mockSimulation),
-    } as unknown as SorobanRpc.Server;
+      simulateTransaction: jest.fn<any>().mockResolvedValue(mockSimulation),
+    } as any;
 
-    (contract.buildGetPaymentParams as jest.Mock).mockReturnValue([]);
-    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
-      transaction: { build: jest.fn().mockReturnValue({}) },
+    buildGetPaymentParams.mockReturnValue([]);
+    buildContractTransaction.mockResolvedValue({
+      transaction: { build: jest.fn().mockReturnValue({}) } as any,
       server: mockServer,
     });
-    (contract.parseEscrowedPayment as jest.Mock).mockReturnValue(mockPayment);
+    parseEscrowedPayment.mockReturnValue(mockPayment);
 
     const result = await getPayment(mockConfig, 42);
 
     expect(result).toEqual(mockPayment);
-    expect(contract.buildGetPaymentParams).toHaveBeenCalledWith(42);
-    expect(contract.parseEscrowedPayment).toHaveBeenCalledWith(mockRetval);
+    expect(buildGetPaymentParams).toHaveBeenCalledWith(42);
+    expect(parseEscrowedPayment).toHaveBeenCalledWith(mockRetval);
   });
 });
 
@@ -279,21 +302,21 @@ describe("wrapX402Payment", () => {
 
   it("should correctly delegate to createPayment with mapped parameters", async () => {
     const mockServer = {
-      getTransaction: jest.fn().mockResolvedValue({
+      getTransaction: jest.fn<any>().mockResolvedValue({
         status: "SUCCESS",
         returnValue: nativeToScVal(99, { type: "u64" }),
       }),
-    } as unknown as SorobanRpc.Server;
+    } as any;
 
-    (contract.buildCreatePaymentParams as jest.Mock).mockReturnValue([]);
-    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
-      transaction: {},
+    buildCreatePaymentParams.mockReturnValue([]);
+    buildContractTransaction.mockResolvedValue({
+      transaction: {} as any,
       server: mockServer,
     });
-    (contract.simulateTransaction as jest.Mock).mockResolvedValue("mock_xdr");
+    simulateTransaction.mockResolvedValue("mock_xdr");
     mockSignTransaction.mockResolvedValue("signed_xdr");
-    (contract.submitAndConfirm as jest.Mock).mockResolvedValue("wrapped_tx_hash");
-    (contract.parsePaymentId as jest.Mock).mockReturnValue(99);
+    submitAndConfirm.mockResolvedValue("wrapped_tx_hash");
+    parsePaymentId.mockReturnValue(99);
 
     const result = await wrapX402Payment(mockConfig, {
       payer: "GAPAYER...",
@@ -310,7 +333,7 @@ describe("wrapX402Payment", () => {
       txHash: "wrapped_tx_hash",
     });
 
-    expect(contract.buildCreatePaymentParams).toHaveBeenCalledWith({
+    expect(buildCreatePaymentParams).toHaveBeenCalledWith({
       payer: "GAPAYER...",
       payee: "GASELLER...",
       token: "GATOKEN...",
@@ -327,12 +350,12 @@ describe("Error propagation", () => {
   });
 
   it("should propagate contract errors when simulation fails", async () => {
-    (contract.buildCreatePaymentParams as jest.Mock).mockReturnValue([]);
-    (contract.buildContractTransaction as jest.Mock).mockResolvedValue({
-      transaction: {},
-      server: {},
+    buildCreatePaymentParams.mockReturnValue([]);
+    buildContractTransaction.mockResolvedValue({
+      transaction: {} as any,
+      server: {} as any,
     });
-    (contract.simulateTransaction as jest.Mock).mockRejectedValue(
+    simulateTransaction.mockRejectedValue(
       new Error("Simulation failed: InvalidAmount")
     );
 

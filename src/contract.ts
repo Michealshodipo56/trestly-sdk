@@ -155,11 +155,10 @@ export function buildCreatePaymentParams(params: {
  */
 export function buildRaiseDisputeParams(params: {
   paymentId: number;
-  payer: string;
+  payer: string; // used only to know who must sign — not sent as a contract arg
 }): xdr.ScVal[] {
   return [
     nativeToScVal(params.paymentId, { type: "u64" }),
-    new Address(params.payer).toScVal(),
   ];
 }
 
@@ -175,12 +174,11 @@ export function buildReleaseParams(paymentId: number): xdr.ScVal[] {
  */
 export function buildResolveDisputeParams(params: {
   paymentId: number;
-  arbiter: string;
+  arbiter: string; // used only to know who must sign — not sent as a contract arg
   refundToPayer: boolean;
 }): xdr.ScVal[] {
   return [
     nativeToScVal(params.paymentId, { type: "u64" }),
-    new Address(params.arbiter).toScVal(),
     nativeToScVal(params.refundToPayer, { type: "bool" }),
   ];
 }
