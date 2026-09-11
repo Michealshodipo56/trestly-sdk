@@ -5,7 +5,7 @@
 
 import {
   Contract,
-  SorobanRpc,
+  rpc,
   TransactionBuilder,
   BASE_FEE,
   Networks,
@@ -25,8 +25,8 @@ export async function buildContractTransaction(
   sourceAccount: string,
   method: string,
   params: xdr.ScVal[]
-): Promise<{ transaction: TransactionBuilder; server: SorobanRpc.Server }> {
-  const server = new SorobanRpc.Server(config.rpcUrl);
+): Promise<{ transaction: TransactionBuilder; server: rpc.Server }> {
+  const server = new rpc.Server(config.rpcUrl);
   const contract = new Contract(config.contractId);
 
   const sourceAccountObj = await server.getAccount(sourceAccount);
@@ -45,13 +45,13 @@ export async function buildContractTransaction(
  * Simulate a transaction and return the prepared transaction
  */
 export async function simulateTransaction(
-  server: SorobanRpc.Server,
+  server: rpc.Server,
   transaction: TransactionBuilder
 ): Promise<string> {
   const built = transaction.build();
   const simulated = await server.simulateTransaction(built);
 
-  if (SorobanRpc.Api.isSimulationError(simulated)) {
+  if (rpc.Api.isSimulationError(simulated)) {
     throw new Error(`Simulation failed: ${simulated.error}`);
   }
 
@@ -59,7 +59,7 @@ export async function simulateTransaction(
     throw new Error("Simulation returned no result");
   }
 
-  const prepared = SorobanRpc.assembleTransaction(built, simulated).build();
+  const prepared = rpc.assembleTransaction(built, simulated).build();
   return prepared.toXDR();
 }
 
@@ -67,7 +67,7 @@ export async function simulateTransaction(
  * Submit a signed transaction and wait for confirmation
  */
 export async function submitAndConfirm(
-  server: SorobanRpc.Server,
+  server: rpc.Server,
   signedXdr: string
 ): Promise<string> {
   const signedTx = TransactionBuilder.fromXDR(
@@ -84,7 +84,7 @@ export async function submitAndConfirm(
   const txHash = result.hash;
 
   // Poll for transaction status
-  let status: SorobanRpc.Api.GetTransactionResponse;
+  let status: rpc.Api.GetTransactionResponse;
   let attempts = 0;
   const maxAttempts = 30;
 
@@ -158,7 +158,7 @@ export function buildRaiseDisputeParams(params: {
   payer: string; // used only to know who must sign — not sent as a contract arg
 }): xdr.ScVal[] {
   return [
-    nativeToScVal(params.paymentId, { type: "u64" }),
+    nativeToScVal(params.paymentId, { type: "u32" }),
   ];
 }
 
@@ -166,7 +166,7 @@ export function buildRaiseDisputeParams(params: {
  * Build parameters for release contract method
  */
 export function buildReleaseParams(paymentId: number): xdr.ScVal[] {
-  return [nativeToScVal(paymentId, { type: "u64" })];
+  return [nativeToScVal(paymentId, { type: "u32" })];
 }
 
 /**
@@ -178,7 +178,7 @@ export function buildResolveDisputeParams(params: {
   refundToPayer: boolean;
 }): xdr.ScVal[] {
   return [
-    nativeToScVal(params.paymentId, { type: "u64" }),
+    nativeToScVal(params.paymentId, { type: "u32" }),
     nativeToScVal(params.refundToPayer, { type: "bool" }),
   ];
 }
@@ -187,7 +187,7 @@ export function buildResolveDisputeParams(params: {
  * Build parameters for get_payment contract method
  */
 export function buildGetPaymentParams(paymentId: number): xdr.ScVal[] {
-  return [nativeToScVal(paymentId, { type: "u64" })];
+  return [nativeToScVal(paymentId, { type: "u32" })];
 }
 
 /**

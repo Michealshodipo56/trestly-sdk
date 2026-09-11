@@ -2,7 +2,7 @@
  * Trestly SDK client functions
  */
 
-import { SorobanRpc } from "@stellar/stellar-sdk";
+import { rpc } from "@stellar/stellar-sdk";
 import {
   TrestlyConfig,
   CreatePaymentParams,
@@ -193,13 +193,12 @@ export async function getPayment(
   config: TrestlyConfig,
   paymentId: number
 ): Promise<EscrowedPayment> {
-  const server = new SorobanRpc.Server(config.rpcUrl);
   const contractParams = buildGetPaymentParams(paymentId);
 
   // Use a dummy account for simulation (read-only call)
   const dummyAccount = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
-  const { transaction } = await buildContractTransaction(
+  const { transaction, server } = await buildContractTransaction(
     config,
     dummyAccount,
     "get_payment",
@@ -209,7 +208,7 @@ export async function getPayment(
   const built = transaction.build();
   const simulated = await server.simulateTransaction(built);
 
-  if (SorobanRpc.Api.isSimulationError(simulated)) {
+  if (rpc.Api.isSimulationError(simulated)) {
     throw new Error(`Simulation failed: ${simulated.error}`);
   }
 

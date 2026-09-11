@@ -1,33 +1,43 @@
 /**
  * Tests for Trestly SDK client functions
+ *
+ * Uses jest.unstable_mockModule + dynamic import because this package is ESM
+ * (ts-jest's default-esm preset does not hoist/link classic jest.mock()
+ * factories against real ES module imports, so the mocked functions never
+ * actually replace the real ones — this is the documented workaround).
  */
-
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
-import { SorobanRpc, xdr, nativeToScVal } from "@stellar/stellar-sdk";
-import {
-  createPayment,
-  raiseDispute,
-  release,
-  resolveDispute,
-  getPayment,
-} from "../src/client.js";
-import { wrapX402Payment } from "../src/x402-wrapper.js";
-import { TrestlyConfig } from "../src/types.js";
-import * as contract from "../src/contract.js";
+import { nativeToScVal } from "@stellar/stellar-sdk";
+import type { rpc } from "@stellar/stellar-sdk";
+import type { TrestlyConfig } from "../src/types.js";
 
-// Mock the contract module
-jest.mock("../src/contract.js", () => ({
-  buildCreatePaymentParams: jest.fn(),
-  buildRaiseDisputeParams: jest.fn(),
-  buildReleaseParams: jest.fn(),
-  buildResolveDisputeParams: jest.fn(),
-  buildGetPaymentParams: jest.fn(),
-  buildContractTransaction: jest.fn(),
-  simulateTransaction: jest.fn(),
-  submitAndConfirm: jest.fn(),
-  parsePaymentId: jest.fn(),
-  parseEscrowedPayment: jest.fn(),
+const buildCreatePaymentParams = jest.fn<any>();
+const buildRaiseDisputeParams = jest.fn<any>();
+const buildReleaseParams = jest.fn<any>();
+const buildResolveDisputeParams = jest.fn<any>();
+const buildGetPaymentParams = jest.fn<any>();
+const buildContractTransaction = jest.fn<any>();
+const simulateTransaction = jest.fn<any>();
+const submitAndConfirm = jest.fn<any>();
+const parsePaymentId = jest.fn<any>();
+const parseEscrowedPayment = jest.fn<any>();
+
+jest.unstable_mockModule("../src/contract.js", () => ({
+  buildCreatePaymentParams,
+  buildRaiseDisputeParams,
+  buildReleaseParams,
+  buildResolveDisputeParams,
+  buildGetPaymentParams,
+  buildContractTransaction,
+  simulateTransaction,
+  submitAndConfirm,
+  parsePaymentId,
+  parseEscrowedPayment,
 }));
+
+const { createPayment, raiseDispute, release, resolveDispute, getPayment } =
+  await import("../src/client.js");
+const { wrapX402Payment } = await import("../src/x402-wrapper.js");
 
 const mockConfig: TrestlyConfig = {
   contractId: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
@@ -36,18 +46,6 @@ const mockConfig: TrestlyConfig = {
 };
 
 const mockSignTransaction = jest.fn<(xdr: string) => Promise<string>>();
-
-// Get mocked functions
-const buildCreatePaymentParams = contract.buildCreatePaymentParams as jest.MockedFunction<typeof contract.buildCreatePaymentParams>;
-const buildRaiseDisputeParams = contract.buildRaiseDisputeParams as jest.MockedFunction<typeof contract.buildRaiseDisputeParams>;
-const buildReleaseParams = contract.buildReleaseParams as jest.MockedFunction<typeof contract.buildReleaseParams>;
-const buildResolveDisputeParams = contract.buildResolveDisputeParams as jest.MockedFunction<typeof contract.buildResolveDisputeParams>;
-const buildGetPaymentParams = contract.buildGetPaymentParams as jest.MockedFunction<typeof contract.buildGetPaymentParams>;
-const buildContractTransaction = contract.buildContractTransaction as jest.MockedFunction<typeof contract.buildContractTransaction>;
-const simulateTransaction = contract.simulateTransaction as jest.MockedFunction<typeof contract.simulateTransaction>;
-const submitAndConfirm = contract.submitAndConfirm as jest.MockedFunction<typeof contract.submitAndConfirm>;
-const parsePaymentId = contract.parsePaymentId as jest.MockedFunction<typeof contract.parsePaymentId>;
-const parseEscrowedPayment = contract.parseEscrowedPayment as jest.MockedFunction<typeof contract.parseEscrowedPayment>;
 
 describe("createPayment", () => {
   beforeEach(() => {
@@ -146,7 +144,7 @@ describe("raiseDispute", () => {
   });
 
   it("should build and submit a raise_dispute transaction", async () => {
-    const mockServer = {} as SorobanRpc.Server;
+    const mockServer = {} as rpc.Server;
     const mockTransaction = {} as any;
 
     buildRaiseDisputeParams.mockReturnValue([]);
@@ -184,7 +182,7 @@ describe("release", () => {
   });
 
   it("should build and submit a release transaction", async () => {
-    const mockServer = {} as SorobanRpc.Server;
+    const mockServer = {} as rpc.Server;
     const mockTransaction = {} as any;
 
     buildReleaseParams.mockReturnValue([]);
@@ -220,7 +218,7 @@ describe("resolveDispute", () => {
   });
 
   it("should build and submit a resolve_dispute transaction", async () => {
-    const mockServer = {} as SorobanRpc.Server;
+    const mockServer = {} as rpc.Server;
     const mockTransaction = {} as any;
 
     buildResolveDisputeParams.mockReturnValue([]);
@@ -271,7 +269,7 @@ describe("getPayment", () => {
       resolved: false,
     };
 
-    const mockRetval = nativeToScVal(mockPayment, { type: "map" });
+    const mockRetval = nativeToScVal(mockPayment);
     const mockSimulation = {
       result: { retval: mockRetval },
     };
