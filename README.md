@@ -343,7 +343,7 @@ MIT
 ## Support
 
 For issues and questions:
-- GitHub Issues: [trestly-sdk/issues](https://github.com/Michealshodipo56/trestly-sdk/issues)
+- GitHub Issues: [trestly-sdk/issues](https://github.com/Trestly-team/trestly-sdk/issues)
 - Documentation: This README
 - Contract Spec: See `trestly-contract` repository
 
